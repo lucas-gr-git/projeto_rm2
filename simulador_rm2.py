@@ -16,6 +16,7 @@ TEMAS = [
     ("regencia",       "Regência e Crase"),
     ("pontuacao",      "Pontuação"),
     ("semantica",      "Semântica e Figuras de Linguagem"),
+    ("vocativo",       "Vocativo"), 
 ]
 
 # ── Leitura Inteligente e Blindada da Planilha ─────────────────────────────────
