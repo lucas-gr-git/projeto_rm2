@@ -21,9 +21,22 @@ TEMAS = [
 @st.cache_data
 def carregar_questoes():
     try:
-        # Lê o arquivo CSV
+        # 1. Tenta ler primeiro com ponto e vírgula (padrão do Excel em português)
         df = pd.read_csv('questoes.csv', sep=';')
         
+        # Se o Python ler apenas 1 coluna, significa que o separador real era a vírgula
+        if len(df.columns) <= 1:
+            df = pd.read_csv('questoes.csv', sep=',')
+            
+    except Exception:
+        try:
+            # 2. Se falhar, tenta ler com vírgula direto
+            df = pd.read_csv('questoes.csv', sep=',')
+        except Exception as e:
+            st.error(f"Erro crítico: O ficheiro 'questoes.csv' não foi encontrado ou está corrompido. Detalhes: {e}")
+            return {}
+            
+    try:
         # Padroniza os nomes dos temas (tira espaços extras e deixa minúsculo)
         df['tema'] = df['tema'].astype(str).str.strip().str.lower()
         
@@ -33,10 +46,7 @@ def carregar_questoes():
             lista_formatada = []
             
             for q in questoes_tema:
-                # Proteção: se não tiver texto, vira vazio
                 texto_base = "" if pd.isna(q.get('texto')) else str(q.get('texto', ''))
-                
-                # Monta as opções protegendo contra vazios
                 opcoes_brutas = [q.get('op_a'), q.get('op_b'), q.get('op_c'), q.get('op_d'), q.get('op_e')]
                 opcoes_limpas = [str(op) for op in opcoes_brutas if not pd.isna(op) and str(op).strip() != '']
                 
@@ -51,9 +61,8 @@ def carregar_questoes():
             base[tema] = lista_formatada
         return base
     except Exception as e:
-        st.error(f"Erro ao carregar a planilha: {e}")
+        st.error(f"Erro ao processar as colunas da planilha: {e}")
         return {}
-
 # Executa o carregamento
 QUESTOES = carregar_questoes()
 
