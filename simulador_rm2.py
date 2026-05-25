@@ -22,7 +22,7 @@ TEMAS = [
 def carregar_questoes():
     try:
         # Lê o arquivo CSV
-        df = pd.read_csv('questoes.csv')
+        df = pd.read_csv('questoes.csv', sep=';')
         
         # Padroniza os nomes dos temas (tira espaços extras e deixa minúsculo)
         df['tema'] = df['tema'].astype(str).str.strip().str.lower()
