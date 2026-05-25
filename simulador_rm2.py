@@ -109,7 +109,12 @@ if st.session_state.tela == 'menu':
         st.warning("⚠️ Nenhuma questão encontrada. Verifique seu arquivo questoes.csv.")
     else:
         st.markdown("### Escolha seu modo de estudo:")
-        if st.button("🌟 Simulado Geral (15 questões aleatórias)", use_container_width=True):
+        
+        # Calcula o total de questões disponíveis e define o limite
+        total_q = sum(len(qs) for qs in QUESTOES.values())
+        limite = min(15, total_q)
+        
+        if st.button(f"🌟 Simulado Geral ({limite} questões aleatórias)", use_container_width=True):
             iniciar_quiz('geral', 'Simulado Geral')
             st.rerun()
             
