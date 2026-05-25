@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import random
+import os
 
 # Configuração da página
 st.set_page_config(page_title="Simulador RM2 - Marinha", page_icon="⚓", layout="centered")
@@ -17,53 +18,97 @@ TEMAS = [
     ("semantica",      "Semântica e Figuras de Linguagem"),
 ]
 
-# ── Leitura da Planilha ────────────────────────────────────────────────────────
+# ── Leitura Inteligente e Blindada da Planilha ─────────────────────────────────
 @st.cache_data
 def carregar_questoes():
-    try:
-        # 1. Tenta ler primeiro com ponto e vírgula (padrão do Excel em português)
-        df = pd.read_csv('questoes.csv', sep=';')
-        
-        # Se o Python ler apenas 1 coluna, significa que o separador real era a vírgula
-        if len(df.columns) <= 1:
-            df = pd.read_csv('questoes.csv', sep=',')
-            
-    except Exception:
-        try:
-            # 2. Se falhar, tenta ler com vírgula direto
-            df = pd.read_csv('questoes.csv', sep=',')
-        except Exception as e:
-            st.error(f"Erro crítico: O ficheiro 'questoes.csv' não foi encontrado ou está corrompido. Detalhes: {e}")
+    # 1. Detecta o arquivo independente de estar em minúsculo (.csv) ou maiúsculo (.CSV)
+    arquivo = 'questoes.csv'
+    if not os.path.exists(arquivo):
+        if os.path.exists('questoes.CSV'):
+            arquivo = 'questoes.CSV'
+        else:
+            st.error("⚠️ O arquivo de questões não foi encontrado no GitHub. Certifique-se de que ele se chama 'questoes.csv'.")
             return {}
-            
+
+    # 2. Testa automaticamente combinações de separadores e encodings do Excel brasileiro
+    combinacoes = [
+        {'sep': ';', 'enc': 'utf-8'},
+        {'sep': ';', 'enc': 'cp1252'},
+        {'sep': ';', 'enc': 'latin-1'},
+        {'sep': ',', 'enc': 'utf-8'},
+        {'sep': ',', 'enc': 'cp1252'},
+    ]
+
+    df = None
+    for comb in combinacoes:
+        try:
+            test_df = pd.read_csv(arquivo, sep=comb['sep'], encoding=comb['enc'])
+            # Se conseguiu ler pelo menos 5 colunas estruturadas, achou o padrão correto
+            if len(test_df.columns) >= 5:
+                df = test_df
+                break
+        except Exception:
+            continue
+
+    if df is None:
+        st.error("❌ Erro crítico: O Excel gerou um formato de arquivo que o sistema não conseguiu decodificar. Tente salvar novamente como CSV.")
+        return {}
+
     try:
-        # Padroniza os nomes dos temas (tira espaços extras e deixa minúsculo)
+        # Padroniza os nomes das colunas para evitar erros de digitação (remove espaços e deixa minúsculo)
+        df.columns = df.columns.str.strip().str.lower()
         df['tema'] = df['tema'].astype(str).str.strip().str.lower()
         
         base = {}
         for tema in df['tema'].unique():
+            if pd.isna(tema) or str(tema).strip() == '' or str(tema) == 'nan':
+                continue
+                
             questoes_tema = df[df['tema'] == tema].to_dict('records')
             lista_formatada = []
             
             for q in questoes_tema:
-                texto_base = "" if pd.isna(q.get('texto')) else str(q.get('texto', ''))
-                opcoes_brutas = [q.get('op_a'), q.get('op_b'), q.get('op_c'), q.get('op_d'), q.get('op_e')]
-                opcoes_limpas = [str(op) for op in opcoes_brutas if not pd.isna(op) and str(op).strip() != '']
+                # Função interna para limpar as aspas extras que o Excel coloca automaticamente
+                def limpar_texto(txt):
+                    if pd.isna(txt): return ""
+                    t = str(txt).strip()
+                    if t.startswith('"') and t.endswith('"'):
+                        t = t[1:-1]
+                    return t.replace('""', '"').replace('\\n', '\n')
+
+                texto_base = limpar_texto(q.get('texto'))
+                enunciado = limpar_texto(q.get('enunciado'))
                 
+                op_a = limpar_texto(q.get('op_a'))
+                op_b = limpar_texto(q.get('op_b'))
+                op_c = limpar_texto(q.get('op_c'))
+                op_d = limpar_texto(q.get('op_d'))
+                op_e = limpar_texto(q.get('op_e'))
+                
+                opcoes_brutas = [op_a, op_b, op_c, op_d, op_e]
+                opcoes_limpas = [op for op in opcoes_brutas if op != '']
+                
+                # Garante que o gabarito vai ser lido como número inteiro puro
+                try:
+                    gabarito = int(float(str(q.get('gabarito', 0)).strip()))
+                except:
+                    gabarito = 0
+
                 lista_formatada.append({
-                    "ano": q.get('ano', 'N/A'),
+                    "ano": str(q.get('ano', 'N/A')).split('.')[0],
                     "texto": texto_base,
-                    "enunciado": str(q.get('enunciado', 'Sem enunciado')),
+                    "enunciado": enunciado if enunciado else "Sem enunciado",
                     "opcoes": opcoes_limpas,
-                    "gabarito": int(q.get('gabarito', 0)),
-                    "explicacao": str(q.get('explicacao', 'Sem explicação disponível.'))
+                    "gabarito": gabarito,
+                    "explicacao": limpar_texto(q.get('explicacao'))
                 })
             base[tema] = lista_formatada
         return base
     except Exception as e:
-        st.error(f"Erro ao processar as colunas da planilha: {e}")
+        st.error(f"❌ Erro ao processar as linhas do arquivo: {e}")
         return {}
-# Executa o carregamento
+
+# Executa o carregamento blindado
 QUESTOES = carregar_questoes()
 
 # ── Controle de Estado ──────────────────────────────────────────────────────────
@@ -113,13 +158,11 @@ if st.session_state.tela == 'menu':
     st.subheader("Concurso RM2 - Marinha do Brasil")
     st.divider()
     
-    # Se der erro de leitura, avisa aqui
     if not QUESTOES:
-        st.warning("⚠️ Nenhuma questão encontrada. Verifique seu arquivo questoes.csv.")
+        st.warning("⚠️ Nenhuma questão ativa encontrada. Verifique o arquivo de dados.")
     else:
         st.markdown("### Escolha seu modo de estudo:")
         
-        # Calcula o total de questões disponíveis e define o limite
         total_q = sum(len(qs) for qs in QUESTOES.values())
         limite = min(15, total_q)
         
@@ -148,7 +191,7 @@ elif st.session_state.tela == 'quiz':
     st.caption(f"Tema: {st.session_state.tema_nome} | Ano: {q.get('ano', 'N/A')}")
     st.progress(atual / total, text=f"Questão {atual} de {total}")
     
-    if q["texto"]: # Só mostra se tiver texto base
+    if q["texto"]:
         st.info(q["texto"])
         
     st.markdown(f"#### {q['enunciado']}")
@@ -188,6 +231,7 @@ elif st.session_state.tela == 'quiz':
         if atual < total:
             if st.button("Próxima Questão ➔"):
                 st.session_state.indice += 1
+                st.session_state.shadow_enviada = False
                 st.session_state.resposta_enviada = False
                 st.rerun()
         else:
@@ -209,13 +253,6 @@ elif st.session_state.tela == 'resultado':
         st.metric(label="Acertos", value=f"{acertos} de {total}")
     with col2:
         st.metric(label="Aproveitamento", value=f"{pct}%")
-        
-    if pct >= 70:
-        st.success("Excelente desempenho! Continue assim, o papiro não para!")
-    elif pct >= 50:
-        st.warning("Você está progredindo. Revise os erros para garantir a farda.")
-    else:
-        st.error("Precisa focar mais na revisão teórica. Não desista!")
         
     st.markdown("### 📝 Revisão do Gabarito")
     
