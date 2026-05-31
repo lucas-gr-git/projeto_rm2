@@ -584,18 +584,33 @@ with aba_mapas:
     st.caption(f"{len(arquivos)} arquivo(s) disponível(is)")
     st.divider()
 
+    import requests
+    from urllib.parse import quote
+
     for arquivo in arquivos:
-        from urllib.parse import quote
         url = GITHUB_RAW + quote(arquivo)
-        # Nome amigável: remove prefixo "PORT - AULA XX - " e sufixo ".pdf"
+
+        # Nome amigável
         nome_amigavel = arquivo
         partes = arquivo.split(" - ", 2)
         if len(partes) >= 3:
             nome_amigavel = partes[2].replace(".pdf", "").strip()
 
-        col_nome, col_btn = st.columns([3, 1])
-        with col_nome:
-            st.markdown(f"📄 **{nome_amigavel}**")
-        with col_btn:
-            st.link_button("Abrir PDF", url, use_container_width=True)
-        st.divider()
+        with st.expander(f"📄 {nome_amigavel}", expanded=False):
+            try:
+                response = requests.get(url)
+                if response.status_code == 200:
+                    st.download_button(
+                        label="⬇️ Baixar PDF",
+                        data=response.content,
+                        file_name=arquivo,
+                        mime="application/pdf",
+                        key=f"dl_{arquivo}"
+                    )
+                    # Exibe o PDF inline via iframe com Google Docs Viewer
+                    viewer_url = f"https://docs.google.com/viewer?url={url}&embedded=true"
+                    st.components.v1.iframe(viewer_url, height=600, scrolling=True)
+                else:
+                    st.warning(f"⚠️ Arquivo não encontrado no GitHub: {arquivo}")
+            except Exception as e:
+                st.error(f"Erro ao carregar o PDF: {e}")
